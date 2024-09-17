@@ -1,0 +1,6 @@
+eval:
+python geochat/eval/batch_geochat_vqa.py \
+    --model-path D:\\geochat-para \
+    --image-folder H:\\geochat_data\\LRBEN\\Images_LR \
+    --question-file H:\\geochat_data\\LRBEN\\lrben.jsonl  \
+    --answers-file H:\\geochat_data\\LRBEN\\eval_answer.jsonl

@@ -26,7 +26,7 @@ def parse_args():
     parser.add_argument("--model-path", type=str, default="facebook/opt-350m")
     parser.add_argument("--model-base", type=str, default=None)
     parser.add_argument("--gpu-id", type=str,default=0)
-    parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--conv-mode", type=str, default=None)
     parser.add_argument("--max-new-tokens", type=int, default=300)
     parser.add_argument("--load-8bit", action="store_true")

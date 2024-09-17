@@ -45,7 +45,7 @@ def eval_model(args):
         input_batch=[]
         input_image_batch=[]
         count=i
-        image_folder=[]     
+        image_folder=[] 
         batch_end = min(i + args.batch_size, len(questions))
 
              
@@ -63,7 +63,8 @@ def eval_model(args):
             conv.append_message(conv.roles[1], None)
             prompt = conv.get_prompt()
 
-            input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
+            # input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
+            input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0)
             input_batch.append(input_ids)
 
             image = Image.open(os.path.join(args.image_folder, image_file))
@@ -76,12 +77,28 @@ def eval_model(args):
 
         max_length = max(tensor.size(1) for tensor in input_batch)
 
-        final_input_list = [torch.cat((torch.zeros((1,max_length - tensor.size(1)), dtype=tensor.dtype,device=tensor.get_device()), tensor),dim=1) for tensor in input_batch]
+        # final_input_list = [torch.cat((torch.zeros((1,max_length - tensor.size(1)), dtype=tensor.dtype,device=tensor.get_device()), tensor),dim=1) for tensor in input_batch]
+        final_input_list = [
+            torch.cat(
+                (
+                    torch.zeros(
+                        (1, max_length - tensor.size(1)), 
+                        dtype=tensor.dtype, 
+                        device=tensor.device if tensor.is_cuda else 'cpu'  # 检查设备
+                    ), 
+                    tensor
+                ),
+                dim=1
+            )
+            for tensor in input_batch
+        ]
         final_input_tensors=torch.cat(final_input_list,dim=0)
-        image_tensor_batch = image_processor.preprocess(image_folder,crop_size ={'height': 504, 'width': 504},size = {'shortest_edge': 504}, return_tensors='pt')['pixel_values']
+        image_tensor_batch = image_processor.preprocess(image_folder,crop_size ={'height': 504, 'width': 504},size = {'shortest_edge': 504}, return_tensors='pt', padding=True)['pixel_values']
 
         with torch.inference_mode():
-            output_ids = model.generate( final_input_tensors, images=image_tensor_batch.half().cuda(), do_sample=False , temperature=args.temperature, top_p=args.top_p, num_beams=1, max_new_tokens=256,length_penalty=2.0, use_cache=True)
+            # output_ids = model.generate( final_input_tensors, images=image_tensor_batch.half().cuda(), do_sample=False , temperature=args.temperature, top_p=args.top_p, num_beams=1, max_new_tokens=256,length_penalty=2.0, use_cache=True)
+            model = model.to(device='cpu', dtype=torch.float32)
+            output_ids = model.generate( final_input_tensors, images=image_tensor_batch, do_sample=False , temperature=args.temperature, top_p=args.top_p, num_beams=1, max_new_tokens=256,length_penalty=2.0, use_cache=True)
 
         input_token_len = final_input_tensors.shape[1]
         n_diff_input_output = (final_input_tensors != output_ids[:, :input_token_len]).sum().item()
@@ -108,7 +125,7 @@ def eval_model(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", type=str, default="facebook/opt-350m")
+    parser.add_argument("--model-path", type=str, default=None)
     parser.add_argument("--model-base", type=str, default=None)
     parser.add_argument("--image-folder", type=str, default="")
     parser.add_argument("--question-file", type=str, default="tables/question.jsonl")

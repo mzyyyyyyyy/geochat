@@ -1,0 +1,41 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        
+
+
+
+
+
+
+
+        {
+            "name": "Debug batch_geochat_vqa.py",  // 新的配置
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/geochat/eval/batch_geochat_vqa.py",
+            "args": [
+                "--model-path", "D:\\geochat-para",
+                "--image-folder", "H:\\geochat_data\\LRBEN\\Images_LR",
+                "--question-file", "H:\\geochat_data\\LRBEN\\lrben.jsonl",
+                "--answers-file", "H:\\geochat_data\\LRBEN\\eval_answer.jsonl"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        
+
+        {
+            "name": "Debug GeoChat Demo",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/geochat_demo.py",  // 指定主程序
+            "args": ["--model-path", "D:\\geochat-para"],     // 添加命令行参数
+            "console": "integratedTerminal",                  // 使用VSCode的终端
+            "justMyCode": false,                              // 允许调试外部库
+            "env": {                                          // 如果有需要设置环境变量
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        }
+    ]
+}
