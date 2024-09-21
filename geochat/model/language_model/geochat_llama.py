@@ -35,15 +35,21 @@ class GeoChatLlamaModel(GeoChatMetaModel, LlamaModel):
     config_class = GeoChatConfig
 
     def __init__(self, config: LlamaConfig):
+        print(GeoChatLlamaModel.__mro__)
         super(GeoChatLlamaModel, self).__init__(config)
+        # super() 函数用于调用父类的构造函数。这行代码调用了父类 GeoChatMetaModel 和 LlamaModel 的构造函数，并将 config 参数传递给它们。
+        # 这保证了父类的初始化逻辑能够正常执行，父类的属性和状态会在 GeoChatLlamaModel 的实例中正确设置。
 
 
-class GeoChatLlamaForCausalLM(LlamaForCausalLM, GeoChatMetaForCausalLM):
+class GeoChatLlamaForCausalLM(LlamaForCausalLM, GeoChatMetaForCausalLM): 
+# 这个类从两个父类继承，通过这种继承结构，该类可以结合这两个父类的功能，实现更复杂的行为和任务。
     config_class = GeoChatConfig
 
     def __init__(self, config):
         super(LlamaForCausalLM, self).__init__(config)
         self.model = GeoChatLlamaModel(config)
+        # 这个 GeoChatLlamaModel 类定义了 GeoChat 模型的架构，即，可以通过该类提取特征，但不能实现功能。
+        # 而该类 GeoChatLlamaForCausalLM 实现的是在 GeoChat 模型的架构基础上，增加了因果语言建模(Causal Language Modeling)功能，如文本生成等。
 
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
@@ -72,9 +78,12 @@ class GeoChatLlamaForCausalLM(LlamaForCausalLM, GeoChatMetaForCausalLM):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        input_ids, attention_mask, past_key_values, inputs_embeds, labels = self.prepare_inputs_labels_for_multimodal(input_ids, attention_mask, past_key_values, labels, images)
+        input_ids, attention_mask, past_key_values, inputs_embeds, labels = self.prepare_inputs_labels_for_multimodal(input_ids, attention_mask, past_key_values, labels, images) 
+        # attention_mask.shape = torch.Size([1, 1357]), inputs_embeds = torch.Size([1, 1357, 4096])。1357 = 36 * 36 + 62 - 1 . 
+        # 第一次进来的时候 attention_mask = (1, 62), 第二次进来的时候 attention_mask = (1, 63). images 没有变。
 
-        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
+        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn) 
+        # 输入给 model 的 inputs_embeds 相当于用图像编码器编码后的图像信息代替了 prompt_token 中的 image_token，然后将其余 prompt_token 用 embedding 转换为向量。
         outputs = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -86,8 +95,8 @@ class GeoChatLlamaForCausalLM(LlamaForCausalLM, GeoChatMetaForCausalLM):
             return_dict=return_dict
         )
 
-        hidden_states = outputs[0]
-        logits = self.lm_head(hidden_states)
+        hidden_states = outputs[0] # torch.Size([1, 1357, 4096]) # torch.Size([1, 1, 4096])
+        logits = self.lm_head(hidden_states) # torch.Size([1, 1357, 32000]) # torch.Size([1, 1, 32000])
 
         loss = None
         if labels is not None:

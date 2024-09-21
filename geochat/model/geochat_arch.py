@@ -28,10 +28,17 @@ class GeoChatMetaModel:
 
     def __init__(self, config):
         super(GeoChatMetaModel, self).__init__(config)
+        # 当执行 super(GeoChatMetaModel, self).__init__(config) 时，super() 查找的是 GeoChatMetaModel 的下一个类，这个类在 MRO 中排在其后。
+        # 在这里，GeoChatMetaModel 的下一个类是 LlamaModel，因为定义 GeoChatLlamaModel 类的时候，它的父类 GeoChatMetaModel 位于 LlamaModel之前。
+        # 附，MRO 是：('GeoChatLlamaModel'>, <'GeoChatMetaModel'>, <'LlamaModel'>, <'LlamaPreTrainedModel'>, <'PreTrainedModel'>, 
+        # <'torch.nn.modules.module.Module'>, <class 'transformers.modeling_utils.ModuleUtilsMixin'>, <class 'transformers.generation.utils.GenerationMixin'>, 
+        # <class 'transformers.utils.hub.PushToHubMixin'>, <class 'object'>) 
+        # 
+        # 故，执行这一步的时候，实际上先执行了 LlamaModel 类的 __init__ 函数
 
         if hasattr(config, "mm_vision_tower"):
-            self.vision_tower = build_vision_tower(config, delay_load=True)
-            self.mm_projector = build_vision_projector(config)
+            self.vision_tower = build_vision_tower(config, delay_load=True) # 实现 clip-vit 的架构定义和参数加载
+            self.mm_projector = build_vision_projector(config) # 实现 projector 的架构定义和参数加载
 
     def get_vision_tower(self):
         vision_tower = getattr(self, 'vision_tower', None)
@@ -93,8 +100,8 @@ class GeoChatMetaForCausalLM(ABC):
         return self.get_model().get_vision_tower()
 
     def encode_images(self, images):
-        image_features = self.get_model().get_vision_tower()(images)
-        image_features = self.get_model().mm_projector(image_features)
+        image_features = self.get_model().get_vision_tower()(images) # torch.Size([1, 1296, 1024])
+        image_features = self.get_model().mm_projector(image_features) # torch.Size([1, 1296, 4096])
         return image_features
 
     def prepare_inputs_labels_for_multimodal(
@@ -104,7 +111,7 @@ class GeoChatMetaForCausalLM(ABC):
         if vision_tower is None or images is None or input_ids.shape[1] == 1:
             if past_key_values is not None and vision_tower is not None and images is not None and input_ids.shape[1] == 1:
                 attention_mask = torch.ones((attention_mask.shape[0], past_key_values[-1][-1].shape[-2] + 1), dtype=attention_mask.dtype, device=attention_mask.device)
-            return input_ids, attention_mask, past_key_values, None, labels
+            return input_ids, attention_mask, past_key_values, None, labels # 第二次走到这里就出去了
 
         if type(images) is list or images.ndim == 5:
             concat_images = torch.cat([image for image in images], dim=0)
@@ -113,9 +120,9 @@ class GeoChatMetaForCausalLM(ABC):
             image_features = torch.split(image_features, split_sizes, dim=0)
             image_features = [x.flatten(0, 1) for x in image_features]
         else:
-            image_features = self.encode_images(images)
+            image_features = self.encode_images(images) # torch.Size([1, 1296, 4096])
 
-        new_input_embeds = []
+        new_input_embeds = [] # 存储 batch 样本中所有元素经过语言模型的 embedding 和图像编码后的特征，一般 prompt 用语言模型的 embedding 处理，image_token 替换为图像编码器处理后的特征。 
         new_labels = [] if labels is not None else None
         cur_image_idx = 0
         for batch_idx, cur_input_ids in enumerate(input_ids):
@@ -132,14 +139,14 @@ class GeoChatMetaForCausalLM(ABC):
                     new_labels.append(labels[batch_idx])
                 cur_image_idx += 1
                 continue
-            image_token_indices = torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0]
+            image_token_indices = torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0] # image_token 在 prompt 中的位置，为啥在这儿，得看 tokenizer 的定义，暂略。
             cur_new_input_embeds = []
             if labels is not None:
                 cur_labels = labels[batch_idx]
                 cur_new_labels = []
                 assert cur_labels.shape == cur_input_ids.shape
-            while image_token_indices.numel() > 0:
-                cur_image_features = image_features[cur_image_idx]
+            while image_token_indices.numel() > 0: # 表示只要该张量非空张量
+                cur_image_features = image_features[cur_image_idx] # torch.Size([1296, 4096])
                 image_token_start = image_token_indices[0]
                 if getattr(self.config, 'tune_mm_mlp_adapter', False) and getattr(self.config, 'mm_use_im_start_end', False):
                     cur_new_input_embeds.append(self.get_model().embed_tokens(cur_input_ids[:image_token_start-1]).detach())
@@ -151,8 +158,8 @@ class GeoChatMetaForCausalLM(ABC):
                         cur_new_labels.append(torch.full((cur_image_features.shape[0],), IGNORE_INDEX, device=labels.device, dtype=labels.dtype))
                         cur_new_labels.append(cur_labels[image_token_start:image_token_start+1])
                         cur_labels = cur_labels[image_token_start+2:]
-                else:
-                    cur_new_input_embeds.append(self.get_model().embed_tokens(cur_input_ids[:image_token_start]))
+                else: # 这两句很重要，将 prompt 丢给语言模型处理，image_token 替换为刚刚编码好的 image_features.
+                    cur_new_input_embeds.append(self.get_model().embed_tokens(cur_input_ids[:image_token_start])) # torch.Size([35, 4096]) # 在模型中创建一个用于将输入的标记（token）索引映射到嵌入向量（embedding vector）的嵌入层（embedding layer）。nn.Embedding 本质上是一个查找表，用于将每个输入的索引映射到一个固定大小的向量（嵌入向量）。config.vocab_size，代表模型所使用的词汇表中不同标记的总数。在自然语言处理（NLP）任务中，嵌入层通常用于将离散的词汇索引转换为连续的密集向量表示，以便模型能够处理。
                     cur_new_input_embeds.append(cur_image_features)
                     if labels is not None:
                         cur_new_labels.append(cur_labels[:image_token_start])
@@ -162,17 +169,17 @@ class GeoChatMetaForCausalLM(ABC):
                 if getattr(self.config, 'tune_mm_mlp_adapter', False) and getattr(self.config, 'mm_use_im_start_end', False):
                     cur_input_ids = cur_input_ids[image_token_start+2:]
                 else:
-                    cur_input_ids = cur_input_ids[image_token_start+1:]
+                    cur_input_ids = cur_input_ids[image_token_start+1:] # 继续循环的设置，如果剩下的 token 中不再有 image_token ，则会跳出循环。
                 image_token_indices = torch.where(cur_input_ids == IMAGE_TOKEN_INDEX)[0]
             if cur_input_ids.numel() > 0:
                 if getattr(self.config, 'tune_mm_mlp_adapter', False) and getattr(self.config, 'mm_use_im_start_end', False):
                     cur_new_input_embeds.append(self.get_model().embed_tokens(cur_input_ids).detach())
-                else:
-                    cur_new_input_embeds.append(self.get_model().embed_tokens(cur_input_ids))
+                else: # 将剩下的 prompt 丢给语言模型进行处理。
+                    cur_new_input_embeds.append(self.get_model().embed_tokens(cur_input_ids)) # torch.Size([26, 4096])
                 if labels is not None:
                     cur_new_labels.append(cur_labels)
             cur_new_input_embeds = [x.to(device=self.device) for x in cur_new_input_embeds]
-            cur_new_input_embeds = torch.cat(cur_new_input_embeds, dim=0)
+            cur_new_input_embeds = torch.cat(cur_new_input_embeds, dim=0) # torch.Size([1357, 4096])
             new_input_embeds.append(cur_new_input_embeds)
             if labels is not None:
                 cur_new_labels = torch.cat(cur_new_labels, dim=0)
@@ -205,13 +212,13 @@ class GeoChatMetaForCausalLM(ABC):
                 attention_mask = torch.stack(new_attention_mask, dim=0)
                 assert attention_mask.shape == new_labels.shape
         else:
-            new_input_embeds = torch.stack(new_input_embeds, dim=0)
+            new_input_embeds = torch.stack(new_input_embeds, dim=0) # torch.Size([1, 1357, 4096])
             if labels is not None:
                 new_labels  = torch.stack(new_labels, dim=0)
 
-            if attention_mask is not None:
+            if attention_mask is not None: # 这个属性咱也不知道是干嘛用的，暂略。
                 new_attn_mask_pad_left = torch.full((attention_mask.shape[0], new_input_embeds.shape[1] - input_ids.shape[1]), True, dtype=attention_mask.dtype, device=attention_mask.device)
-                attention_mask = torch.cat((new_attn_mask_pad_left, attention_mask), dim=1)
+                attention_mask = torch.cat((new_attn_mask_pad_left, attention_mask), dim=1) # torch.Size([1, 1357]) 
                 assert attention_mask.shape == new_input_embeds.shape[:2]
 
         return None, attention_mask, past_key_values, new_input_embeds, new_labels

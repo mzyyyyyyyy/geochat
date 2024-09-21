@@ -102,6 +102,9 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
                 print("Loading GeoChat......")
                 tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
                 model = GeoChatLlamaForCausalLM.from_pretrained(model_path, low_cpu_mem_usage=True, **kwargs)
+                # 这里调用的 from_pretrained 方法源自 PreTrainedModel 类，继承关系如下：
+                # GeoChatLlamaForCausalLM->LlamaForCausalLM->LlamaPreTrainedModel->PreTrainedModel
+                # 直到 PreTrainedModel 类里有 from_pretrained 方法。
     else:
         # Load language model
         if model_base is not None:

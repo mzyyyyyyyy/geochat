@@ -87,6 +87,7 @@ class CLIPVisionTower(nn.Module):
             self.cfg_only = CLIPVisionConfig.from_pretrained(self.vision_tower_name)
             self.image_processor = CLIPImageProcessor.from_pretrained(self.vision_tower_name)
             self.vision_tower = CLIPVisionModel.from_pretrained(self.vision_tower_name)
+            # 在这里实现了视觉编码器的架构定义和参数加载。（因为这里的 from_pretrained 方法里同时实现了两个功能）
             self.vision_tower.requires_grad_(False)
             self.clip_interpolate_embeddings(image_size=504, patch_size=14)
 
@@ -100,7 +101,7 @@ class CLIPVisionTower(nn.Module):
         # print(self.is_loaded)
 
     def feature_select(self, image_forward_outs):
-        image_features = image_forward_outs.hidden_states[self.select_layer]
+        image_features = image_forward_outs.hidden_states[self.select_layer] # 为什么选择倒数第二层呢？倒数第二层代表了 CLIPEncoder 处理的第一层。
         if self.select_feature == 'patch':
             image_features = image_features[:, 1:]
         elif self.select_feature == 'cls_patch':
@@ -125,8 +126,8 @@ class CLIPVisionTower(nn.Module):
         else:
             # print(images.shape)
             # import pdb; pdb.set_trace()
-            image_forward_outs = self.vision_tower(images.to(device=self.device, dtype=self.dtype), output_hidden_states=True)
-            image_features = self.feature_select(image_forward_outs).to(images.dtype)
+            image_forward_outs = self.vision_tower(images.to(device=self.device, dtype=self.dtype), output_hidden_states=True) # 25 个 shape 为（1, 1297, 1024）的 torch 张量
+            image_features = self.feature_select(image_forward_outs).to(images.dtype) # torch.Size([1, 1296, 1024])
             # print(image_features.shape)
             
 

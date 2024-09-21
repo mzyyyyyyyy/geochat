@@ -56,7 +56,9 @@ def process_images_demo(images, image_processor):
     return new_images
 
 def tokenizer_image_token(prompt, tokenizer, image_token_index=IMAGE_TOKEN_INDEX, return_tensors=None):
+# 对带有 <image> 标记的文本进行处理，将文本和图像 token 分割并重新组合，生成正确的 token ID 列表（或张量），以便输入到模型中。
     prompt_chunks = [tokenizer(chunk).input_ids for chunk in prompt.split('<image>')]
+    # 具体 tokenizer 内部长啥样，暂略。
 
     def insert_separator(X, sep):
         return [ele for sublist in zip(X, [sep]*len(X)) for ele in sublist][:-1]
